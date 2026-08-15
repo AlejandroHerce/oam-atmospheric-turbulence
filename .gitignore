@@ -216,3 +216,21 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# ------------------------------------------------------------
+# Project-specific ignores
+# ------------------------------------------------------------
+
+# Generated simulation results
+results/
+
+# Archives and temporary backups
+*.zip
+*.tar
+*.tar.gz
+
+# macOS metadata
+.DS_Store
+
+# Local editor configuration
+.vscode/
+.idea/

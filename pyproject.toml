@@ -1,0 +1,11 @@
+[project]
+name = "oam-atmospheric-turbulence"
+version = "0.1.0"
+description = "Numerical simulation of orbital angular momentum beams propagating through atmospheric turbulence."
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+]
