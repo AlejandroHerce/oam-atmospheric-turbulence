@@ -9,3 +9,7 @@ dependencies = [
     "scipy",
     "matplotlib",
 ]
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]

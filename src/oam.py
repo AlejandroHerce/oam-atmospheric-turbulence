@@ -266,7 +266,7 @@ def calculate_oam_spectrum(
         modal_power[index] = (
             2.0
             * np.pi
-            * np.trapz(integrand, r)
+            * np.trapezoid(integrand, r)
         )
 
     total_power = float(np.sum(modal_power))
