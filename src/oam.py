@@ -383,3 +383,56 @@ def _validate_spectrum_arrays(
         raise ValueError(
             "ell_values and modal_power must have the same length."
         )
+
+def calculate_rms_oam_spread(
+    ell_values: NDArray[np.int64],
+    modal_power: RealArray,
+    transmitted_charge: int,
+) -> float:
+    """
+    Calculate the RMS OAM spread with respect to the transmitted mode.
+
+        sigma_Delta_ell =
+        sqrt[
+            sum_l (l - l0)^2 P_l
+        ]
+
+    Unlike the conventional standard deviation, the reference is
+    the transmitted OAM charge l0 rather than the mean OAM.
+    """
+
+    if ell_values.shape != modal_power.shape:
+        raise ValueError(
+            "ell_values and modal_power must have the same shape."
+        )
+
+    if np.any(modal_power < 0.0):
+        raise ValueError(
+            "modal_power must not contain negative values."
+        )
+
+    total_power = float(
+        np.sum(modal_power)
+    )
+
+    if total_power <= 0.0:
+        raise ValueError(
+            "modal_power must contain positive total power."
+        )
+
+    normalized_power = (
+        modal_power
+        / total_power
+    )
+
+    return float(
+        np.sqrt(
+            np.sum(
+                (
+                    ell_values
+                    - transmitted_charge
+                ) ** 2
+                * normalized_power
+            )
+        )
+    )
