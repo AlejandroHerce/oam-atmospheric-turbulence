@@ -1,19 +1,31 @@
 """
-Longitudinal split-step convergence in moderate and strong turbulence.
+Longitudinal split-step convergence in moderate and strong
+Kolmogorov turbulence.
 
-The final on-axis scintillation index is evaluated for
+The final on-axis scintillation index is evaluated for several
+numbers of phase screens while keeping the integrated turbulence
+strength of the complete propagation path constant.
 
-    Ns = 1, 2, 4, 8, 16, 32
-
-phase screens while keeping the integrated turbulence strength
-of the complete 1000 m path constant.
-
-For each Ns, the Fried parameter represented by one screen is
+For Ns equal longitudinal segments,
 
     r0_screen = r0_total * Ns^(3/5).
 
-The experiment is performed independently for moderate and
-strong Kolmogorov turbulence.
+The random hierarchy is constructed independently for every
+
+    (turbulence regime, Ns, realization, screen),
+
+so different longitudinal discretizations do not reuse phase-screen
+random streams.
+
+The experiment evaluates:
+
+    - scintillation index;
+    - bootstrap 95 % confidence interval;
+    - relative error with respect to the maximum Ns;
+    - relative change between consecutive refinements.
+
+Previously saved ensembles can be extended without recomputing
+existing realizations.
 """
 
 import argparse
@@ -26,6 +38,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 
 from configs.chapter_2 import (
     W0_GAUSSIAN,
@@ -70,12 +83,16 @@ from src.propagation import (
 # ============================================================
 
 DEFAULT_NUMBER_OF_WORKERS = min(
-    8,
+    12,
     os.cpu_count() or 1,
 )
 
+# IMPORTANT:
+# A new directory is deliberately used because the random-stream
+# hierarchy differs from the previous implementation.
 OUTPUT_DIRECTORY = Path(
-    "results/chapter_4/split_step_screen_convergence"
+    "results/chapter_4/"
+    "split_step_screen_convergence_independent_seeds"
 )
 
 
@@ -122,9 +139,10 @@ def segment_fried_parameter(
     number_of_screens: int,
 ) -> float:
     """
-    Convert the Fried parameter of the complete homogeneous
-    propagation path into the Fried parameter represented by
-    each equal longitudinal segment.
+    Convert the Fried parameter of the complete homogeneous path
+    into the Fried parameter represented by each equal segment.
+
+        r0_screen = r0_total * Ns^(3/5).
     """
 
     if total_r0 <= 0.0:
@@ -139,28 +157,58 @@ def segment_fried_parameter(
 
     return float(
         total_r0
-        * number_of_screens ** (3.0 / 5.0)
+        * number_of_screens
+        ** (3.0 / 5.0)
     )
 
 
 # ============================================================
-# Reproducible realization seeds
+# Random hierarchy
 # ============================================================
 
 def generate_realization_seeds(
     number_of_realizations: int,
+    number_of_screens: int,
+    regime_code: int,
 ) -> list[int]:
     """
-    Generate one reproducible seed per atmospheric realization.
+    Generate deterministic realization seeds for one specific
+    turbulence regime and one specific longitudinal
+    discretization.
 
-    The same realization-seed sequence is reused for every Ns.
+    The root entropy contains
+
+        global experiment seed,
+        turbulence regime,
+        Ns.
+
+    Therefore, different Ns values and turbulence regimes use
+    independent deterministic random streams.
+
+    Recreating this function with a larger number_of_realizations
+    reproduces exactly the previous prefix, allowing safe
+    ensemble extension.
     """
 
-    seed_sequence = np.random.SeedSequence(
-        SCREEN_CONVERGENCE_SEED
+    if number_of_realizations <= 0:
+        raise ValueError(
+            "number_of_realizations must be positive."
+        )
+
+    if number_of_screens <= 0:
+        raise ValueError(
+            "number_of_screens must be positive."
+        )
+
+    root_sequence = np.random.SeedSequence(
+        [
+            int(SCREEN_CONVERGENCE_SEED),
+            int(regime_code),
+            int(number_of_screens),
+        ]
     )
 
-    child_sequences = seed_sequence.spawn(
+    child_sequences = root_sequence.spawn(
         number_of_realizations
     )
 
@@ -174,40 +222,23 @@ def generate_realization_seeds(
         for child in child_sequences
     ]
 
+
 def generate_screen_seeds(
     realization_seed: int,
     number_of_screens: int,
 ) -> list[int]:
     """
-    Generate deterministic screen seeds for one atmospheric
-    realization.
+    Generate one independent deterministic random stream for
+    every phase screen of a single atmospheric realization.
 
-    Each atmospheric realization has one master seed. From this
-    seed, an ordered sequence of independent longitudinal screen
-    seeds is generated.
+    Since the realization seed already depends on regime and Ns,
+    these child streams are unique to
 
-    Therefore, for the same realization, refinements reuse the
-    beginning of the same deterministic random hierarchy:
-
-        Ns = 1  -> s0
-        Ns = 2  -> s0, s1
-        Ns = 4  -> s0, s1, s2, s3
-        ...
-
-    The phase screens are not identical between refinements
-    because their Fried parameter changes with Ns. The purpose
-    of this construction is reproducibility and common random
-    numbers, not an exact pointwise nesting of atmospheric
-    realizations.
+        (regime, Ns, realization, screen).
     """
 
-    if number_of_screens <= 0:
-        raise ValueError(
-            "number_of_screens must be positive."
-        )
-
     realization_sequence = np.random.SeedSequence(
-        realization_seed
+        int(realization_seed)
     )
 
     screen_sequences = realization_sequence.spawn(
@@ -224,6 +255,7 @@ def generate_screen_seeds(
         for sequence in screen_sequences
     ]
 
+
 # ============================================================
 # One atmospheric realization
 # ============================================================
@@ -234,18 +266,13 @@ def simulate_one_realization(
     total_r0: float,
 ) -> float:
     """
-    Propagate one Gaussian beam realization and return the
-    final on-axis irradiance.
+    Propagate one Gaussian beam realization and return the final
+    on-axis irradiance.
 
     Screens are placed at the centers of equal longitudinal
     segments:
 
-        dz/2 -> screen -> dz/2.
-
-    A deterministic hierarchy of screen seeds is derived from
-    the realization seed. This implements common random numbers
-    across longitudinal refinements while preserving the correct
-    Fried parameter for each value of Ns.
+        dz/2 -> phase screen -> dz/2.
     """
 
     grid, field = (
@@ -279,7 +306,7 @@ def simulate_one_realization(
         number_of_screens
     ):
 
-        # First half of the longitudinal segment.
+        # First half segment.
         field = angular_spectrum_propagation(
             field=field,
             wavelength=WAVELENGTH,
@@ -287,8 +314,6 @@ def simulate_one_realization(
             dx=DX,
         )
 
-        # Independent deterministic random stream for this
-        # longitudinal screen.
         screen_rng = np.random.default_rng(
             screen_seeds[
                 screen_index
@@ -312,7 +337,7 @@ def simulate_one_realization(
             1j * phase_screen
         )
 
-        # Second half of the longitudinal segment.
+        # Second half segment.
         field = angular_spectrum_propagation(
             field=field,
             wavelength=WAVELENGTH,
@@ -345,8 +370,8 @@ def run_ensemble_for_screen_number(
     number_of_workers: int,
 ) -> np.ndarray:
     """
-    Calculate the final on-axis irradiance for one longitudinal
-    discretization.
+    Calculate the final on-axis irradiance ensemble for one
+    longitudinal discretization.
     """
 
     worker = partial(
@@ -372,6 +397,7 @@ def run_ensemble_for_screen_number(
     )
 
     print()
+
     print(
         f"Ns = {number_of_screens}"
     )
@@ -400,9 +426,9 @@ def run_ensemble_for_screen_number(
             results
         ):
 
-            intensity_samples[index] = (
-                intensity
-            )
+            intensity_samples[
+                index
+            ] = intensity
 
             completed = (
                 index + 1
@@ -411,7 +437,8 @@ def run_ensemble_for_screen_number(
             if (
                 completed == 1
                 or completed % 25 == 0
-                or completed == number_of_realizations
+                or completed
+                == number_of_realizations
             ):
                 print(
                     f"Ns={number_of_screens}: "
@@ -432,7 +459,9 @@ def calculate_scintillation_index(
     """
     Calculate
 
-        sigma_I^2 = <I^2>/<I>^2 - 1.
+        sigma_I^2
+        =
+        <I^2>/<I>^2 - 1.
     """
 
     mean_intensity = float(
@@ -440,6 +469,14 @@ def calculate_scintillation_index(
             intensity_samples
         )
     )
+
+    if (
+        not np.isfinite(mean_intensity)
+        or mean_intensity <= 0.0
+    ):
+        raise ValueError(
+            "Mean intensity must be positive and finite."
+        )
 
     mean_squared_intensity = float(
         np.mean(
@@ -455,7 +492,7 @@ def calculate_scintillation_index(
 
 
 # ============================================================
-# Bootstrap
+# Bootstrap confidence interval
 # ============================================================
 
 def calculate_bootstrap_ci(
@@ -468,12 +505,12 @@ def calculate_bootstrap_ci(
     float,
 ]:
     """
-    Percentile bootstrap confidence interval for the
+    Percentile-bootstrap confidence interval for the
     scintillation index.
     """
 
     rng = np.random.default_rng(
-        seed
+        int(seed)
     )
 
     number_of_realizations = (
@@ -495,15 +532,13 @@ def calculate_bootstrap_ci(
             size=number_of_realizations,
         )
 
-        sample = intensity_samples[
-            indices
-        ]
-
         bootstrap_values[
             bootstrap_index
         ] = (
             calculate_scintillation_index(
-                sample
+                intensity_samples[
+                    indices
+                ]
             )
         )
 
@@ -546,16 +581,18 @@ def calculate_convergence_metrics(
     """
     Calculate:
 
-        reference error with respect to maximum Ns
-
-    and
-
-        incremental change relative to previous refinement.
+        1. relative error with respect to maximum Ns;
+        2. relative change between consecutive refinements.
     """
 
-    reference_value = (
+    reference_value = float(
         scintillation_values[-1]
     )
+
+    if reference_value <= 0.0:
+        raise ValueError(
+            "Maximum-Ns scintillation must be positive."
+        )
 
     reference_error = (
         100.0
@@ -577,17 +614,24 @@ def calculate_convergence_metrics(
         len(screen_numbers),
     ):
 
-        current_value = (
-            scintillation_values[index]
+        current_value = float(
+            scintillation_values[
+                index
+            ]
         )
 
-        previous_value = (
+        previous_value = float(
             scintillation_values[
                 index - 1
             ]
         )
 
-        incremental_change[index] = (
+        if current_value <= 0.0:
+            continue
+
+        incremental_change[
+            index
+        ] = (
             100.0
             * abs(
                 current_value
@@ -603,28 +647,23 @@ def calculate_convergence_metrics(
 
 
 # ============================================================
-# One turbulence regime
+# Run one turbulence regime
 # ============================================================
 
 def run_regime(
     regime_name: str,
+    regime_code: int,
     total_r0: float,
     number_of_realizations: int,
     number_of_workers: int,
 ) -> dict:
     """
-    Run the complete screen-number convergence experiment for
-    one turbulence regime.
+    Run the complete longitudinal-convergence experiment for one
+    turbulence regime.
     """
 
     screen_numbers = tuple(
         SCREEN_CONVERGENCE_LEVELS
-    )
-
-    realization_seeds = (
-        generate_realization_seeds(
-            number_of_realizations
-        )
     )
 
     scintillation_values = np.zeros(
@@ -643,6 +682,7 @@ def run_regime(
     raw_samples = {}
 
     print()
+
     print(
         f"Régimen: {regime_name}"
     )
@@ -656,6 +696,20 @@ def run_regime(
     for index, number_of_screens in enumerate(
         screen_numbers
     ):
+
+        realization_seeds = (
+            generate_realization_seeds(
+                number_of_realizations=(
+                    number_of_realizations
+                ),
+                number_of_screens=(
+                    number_of_screens
+                ),
+                regime_code=(
+                    regime_code
+                ),
+            )
+        )
 
         intensity_samples = (
             run_ensemble_for_screen_number(
@@ -676,7 +730,9 @@ def run_regime(
             number_of_screens
         ] = intensity_samples
 
-        scintillation_values[index] = (
+        scintillation_values[
+            index
+        ] = (
             calculate_scintillation_index(
                 intensity_samples
             )
@@ -697,6 +753,8 @@ def run_regime(
             ),
             seed=(
                 SCREEN_CONVERGENCE_BOOTSTRAP_SEED
+                + 100_000
+                * regime_code
                 + number_of_screens
             ),
         )
@@ -714,6 +772,8 @@ def run_regime(
     return {
         "regime":
             regime_name,
+        "regime_code":
+            regime_code,
         "total_r0":
             total_r0,
         "screen_numbers":
@@ -733,13 +793,16 @@ def run_regime(
     }
 
 
+# ============================================================
+# Load saved samples
+# ============================================================
+
 def load_raw_samples(
     regime_name: str,
     number_of_screens: int,
 ) -> np.ndarray:
     """
-    Load previously saved on-axis irradiance samples for one
-    turbulence regime and one value of Ns.
+    Load previously saved on-axis irradiance samples.
     """
 
     filename = (
@@ -778,6 +841,251 @@ def load_raw_samples(
 
     return samples
 
+
+# ============================================================
+# Extend one turbulence regime
+# ============================================================
+
+def extend_regime(
+    regime_name: str,
+    regime_code: int,
+    total_r0: float,
+    target_size: int,
+    number_of_workers: int,
+) -> dict:
+    """
+    Extend all previously saved Ns ensembles without
+    recomputing existing atmospheric realizations.
+    """
+
+    screen_numbers = tuple(
+        SCREEN_CONVERGENCE_LEVELS
+    )
+
+    existing_samples = {}
+
+    current_sizes = []
+
+    for number_of_screens in screen_numbers:
+
+        samples = load_raw_samples(
+            regime_name=regime_name,
+            number_of_screens=number_of_screens,
+        )
+
+        existing_samples[
+            number_of_screens
+        ] = samples
+
+        current_sizes.append(
+            samples.size
+        )
+
+    if len(
+        set(
+            current_sizes
+        )
+    ) != 1:
+        raise RuntimeError(
+            "Saved Ns ensembles do not all have the same size."
+        )
+
+    current_size = (
+        current_sizes[0]
+    )
+
+    if target_size <= current_size:
+        raise ValueError(
+            f"target_size={target_size} must exceed "
+            f"existing size {current_size}."
+        )
+
+    additional_number = (
+        target_size
+        - current_size
+    )
+
+    print()
+
+    print(
+        f"Extensión del régimen: "
+        f"{regime_name}"
+    )
+
+    print(
+        f"Ensamble existente: "
+        f"{current_size}"
+    )
+
+    print(
+        f"Nuevas realizaciones: "
+        f"{additional_number}"
+    )
+
+    print(
+        f"Ensamble final: "
+        f"{target_size}"
+    )
+
+    raw_samples = {}
+
+    for number_of_screens in screen_numbers:
+
+        all_realization_seeds = (
+            generate_realization_seeds(
+                number_of_realizations=(
+                    target_size
+                ),
+                number_of_screens=(
+                    number_of_screens
+                ),
+                regime_code=(
+                    regime_code
+                ),
+            )
+        )
+
+        new_realization_seeds = (
+            all_realization_seeds[
+                current_size:
+                target_size
+            ]
+        )
+
+        new_samples = (
+            run_ensemble_for_screen_number(
+                number_of_screens=(
+                    number_of_screens
+                ),
+                total_r0=total_r0,
+                realization_seeds=(
+                    new_realization_seeds
+                ),
+                number_of_workers=(
+                    number_of_workers
+                ),
+            )
+        )
+
+        raw_samples[
+            number_of_screens
+        ] = np.concatenate(
+            (
+                existing_samples[
+                    number_of_screens
+                ],
+                new_samples,
+            )
+        )
+
+    return analyze_raw_samples(
+        regime_name=regime_name,
+        regime_code=regime_code,
+        total_r0=total_r0,
+        raw_samples=raw_samples,
+    )
+
+
+# ============================================================
+# Analyze existing raw samples
+# ============================================================
+
+def analyze_raw_samples(
+    regime_name: str,
+    regime_code: int,
+    total_r0: float,
+    raw_samples: dict,
+) -> dict:
+    """
+    Recompute all convergence statistics from stored ensembles.
+    """
+
+    screen_numbers = tuple(
+        SCREEN_CONVERGENCE_LEVELS
+    )
+
+    scintillation_values = np.zeros(
+        len(screen_numbers),
+        dtype=np.float64,
+    )
+
+    ci_lower = np.zeros_like(
+        scintillation_values
+    )
+
+    ci_upper = np.zeros_like(
+        scintillation_values
+    )
+
+    for index, number_of_screens in enumerate(
+        screen_numbers
+    ):
+
+        samples = raw_samples[
+            number_of_screens
+        ]
+
+        scintillation_values[
+            index
+        ] = (
+            calculate_scintillation_index(
+                samples
+            )
+        )
+
+        (
+            ci_lower[index],
+            ci_upper[index],
+        ) = calculate_bootstrap_ci(
+            intensity_samples=samples,
+            number_of_bootstrap_samples=(
+                SCREEN_CONVERGENCE_BOOTSTRAP_SAMPLES
+            ),
+            confidence_level=(
+                SCREEN_CONVERGENCE_BOOTSTRAP_CONFIDENCE_LEVEL
+            ),
+            seed=(
+                SCREEN_CONVERGENCE_BOOTSTRAP_SEED
+                + 100_000
+                * regime_code
+                + number_of_screens
+            ),
+        )
+
+    (
+        reference_error,
+        incremental_change,
+    ) = calculate_convergence_metrics(
+        screen_numbers=screen_numbers,
+        scintillation_values=(
+            scintillation_values
+        ),
+    )
+
+    return {
+        "regime":
+            regime_name,
+        "regime_code":
+            regime_code,
+        "total_r0":
+            total_r0,
+        "screen_numbers":
+            screen_numbers,
+        "scintillation":
+            scintillation_values,
+        "ci_lower":
+            ci_lower,
+        "ci_upper":
+            ci_upper,
+        "reference_error":
+            reference_error,
+        "incremental_change":
+            incremental_change,
+        "raw_samples":
+            raw_samples,
+    }
+
+
 # ============================================================
 # Save raw samples
 # ============================================================
@@ -786,7 +1094,7 @@ def save_raw_samples(
     result: dict,
 ) -> None:
     """
-    Save final on-axis irradiance samples for each Ns.
+    Save final on-axis irradiance samples for every Ns.
     """
 
     regime_directory = (
@@ -802,7 +1110,9 @@ def save_raw_samples(
     for (
         number_of_screens,
         samples,
-    ) in result["raw_samples"].items():
+    ) in result[
+        "raw_samples"
+    ].items():
 
         filename = (
             regime_directory
@@ -868,7 +1178,9 @@ def save_summary(
         )
 
         for index, number_of_screens in enumerate(
-            result["screen_numbers"]
+            result[
+                "screen_numbers"
+            ]
         ):
 
             writer.writerow(
@@ -880,24 +1192,26 @@ def save_summary(
                     ),
                     segment_fried_parameter(
                         total_r0=(
-                            result["total_r0"]
+                            result[
+                                "total_r0"
+                            ]
                         ),
                         number_of_screens=(
                             number_of_screens
                         ),
                     ),
-                    result["scintillation"][
-                        index
-                    ],
-                    result["ci_lower"][
-                        index
-                    ],
-                    result["ci_upper"][
-                        index
-                    ],
-                    result["reference_error"][
-                        index
-                    ],
+                    result[
+                        "scintillation"
+                    ][index],
+                    result[
+                        "ci_lower"
+                    ][index],
+                    result[
+                        "ci_upper"
+                    ][index],
+                    result[
+                        "reference_error"
+                    ][index],
                     result[
                         "incremental_change"
                     ][index],
@@ -906,24 +1220,25 @@ def save_summary(
 
 
 # ============================================================
-# Terminal table
+# Terminal summary
 # ============================================================
 
 def print_summary(
     result: dict,
 ) -> None:
     """
-    Print screen-convergence results.
+    Print longitudinal-convergence results.
     """
 
     print()
+
     print(
         f"Convergencia longitudinal: "
         f"{result['regime']}"
     )
 
     print(
-        "=" * 54
+        "=" * 80
     )
 
     header = (
@@ -940,11 +1255,15 @@ def print_summary(
     )
 
     print(
-        "-" * len(header)
+        "-" * len(
+            header
+        )
     )
 
     for index, number_of_screens in enumerate(
-        result["screen_numbers"]
+        result[
+            "screen_numbers"
+        ]
     ):
 
         incremental = (
@@ -958,7 +1277,9 @@ def print_summary(
             if not np.isfinite(
                 incremental
             )
-            else f"{incremental:.4f}"
+            else (
+                f"{incremental:.4f}"
+            )
         )
 
         print(
@@ -979,25 +1300,33 @@ def plot_scintillation_convergence(
     result: dict,
 ) -> None:
     """
-    Plot scintillation versus number of phase screens with
-    bootstrap confidence intervals.
+    Plot scintillation versus number of phase screens.
     """
 
     screen_numbers = np.asarray(
-        result["screen_numbers"]
+        result[
+            "screen_numbers"
+        ],
+        dtype=np.int64,
     )
 
     scintillation = (
-        result["scintillation"]
+        result[
+            "scintillation"
+        ]
     )
 
     lower_error = (
         scintillation
-        - result["ci_lower"]
+        - result[
+            "ci_lower"
+        ]
     )
 
     upper_error = (
-        result["ci_upper"]
+        result[
+            "ci_upper"
+        ]
         - scintillation
     )
 
@@ -1030,7 +1359,7 @@ def plot_scintillation_convergence(
     )
 
     axis.set_xlabel(
-        "Número de pantallas de fase $N_s$"
+        r"Número de pantallas de fase $N_s$"
     )
 
     axis.set_ylabel(
@@ -1053,7 +1382,9 @@ def plot_scintillation_convergence(
 
     regime_directory = (
         OUTPUT_DIRECTORY
-        / result["regime"]
+        / result[
+            "regime"
+        ]
     )
 
     figure.savefig(
@@ -1069,18 +1400,21 @@ def plot_scintillation_convergence(
 
 
 # ============================================================
-# Plot convergence errors
+# Plot convergence metrics
 # ============================================================
 
 def plot_convergence_metrics(
     result: dict,
 ) -> None:
     """
-    Plot reference error and incremental change.
+    Plot reference error and consecutive-refinement change.
     """
 
     screen_numbers = np.asarray(
-        result["screen_numbers"]
+        result[
+            "screen_numbers"
+        ],
+        dtype=np.int64,
     )
 
     figure, axis = plt.subplots(
@@ -1089,7 +1423,9 @@ def plot_convergence_metrics(
 
     axis.plot(
         screen_numbers,
-        result["reference_error"],
+        result[
+            "reference_error"
+        ],
         marker="o",
         linewidth=1.6,
         label="Error respecto a la referencia",
@@ -1097,18 +1433,20 @@ def plot_convergence_metrics(
 
     axis.plot(
         screen_numbers[1:],
-        result["incremental_change"][1:],
+        result[
+            "incremental_change"
+        ][1:],
         marker="s",
         linewidth=1.6,
         label="Cambio entre refinamientos",
     )
 
     axis.set_xlabel(
-        "Número de pantallas de fase $N_s$"
+        r"Número de pantallas de fase $N_s$"
     )
 
     axis.set_ylabel(
-        "Cambio relativo [%]"
+        "Cambio relativo [\\%]"
     )
 
     axis.set_title(
@@ -1126,7 +1464,9 @@ def plot_convergence_metrics(
 
     regime_directory = (
         OUTPUT_DIRECTORY
-        / result["regime"]
+        / result[
+            "regime"
+        ]
     )
 
     figure.savefig(
@@ -1163,7 +1503,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--workers",
         type=int,
-        default=DEFAULT_NUMBER_OF_WORKERS,
+        default=(
+            DEFAULT_NUMBER_OF_WORKERS
+        ),
     )
 
     parser.add_argument(
@@ -1181,8 +1523,8 @@ def parse_arguments() -> argparse.Namespace:
         type=int,
         default=None,
         help=(
-            "Extend previously saved ensembles to the requested "
-            "number of realizations without recomputing existing samples."
+            "Extend saved ensembles to the requested total "
+            "number of realizations without recomputing existing ones."
         ),
     )
 
@@ -1195,16 +1537,22 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     """
-    Execute the longitudinal convergence experiment.
-
-    The experiment can either start a new ensemble or extend
-    previously saved ensembles without recomputing existing
-    atmospheric realizations.
+    Execute the longitudinal split-step convergence experiment.
     """
 
     arguments = (
         parse_arguments()
     )
+
+    if arguments.realizations <= 0:
+        raise ValueError(
+            "realizations must be positive."
+        )
+
+    if arguments.workers <= 0:
+        raise ValueError(
+            "workers must be positive."
+        )
 
     OUTPUT_DIRECTORY.mkdir(
         parents=True,
@@ -1220,6 +1568,7 @@ def main() -> None:
         configurations.append(
             (
                 "moderada",
+                1,
                 MODERATE_R0_TOTAL,
             )
         )
@@ -1231,29 +1580,32 @@ def main() -> None:
         configurations.append(
             (
                 "fuerte",
+                2,
                 STRONG_R0_TOTAL,
             )
         )
+
+    print()
 
     print(
         "Convergencia longitudinal del método Split-Step"
     )
 
     print(
-        "=============================================="
+        "==============================================="
     )
 
     if arguments.extend_to is None:
 
         print(
-            f"Realizaciones: "
+            f"Realizaciones por Ns: "
             f"{arguments.realizations}"
         )
 
     else:
 
         print(
-            f"Extender ensamble hasta: "
+            f"Extender ensambles hasta: "
             f"{arguments.extend_to}"
         )
 
@@ -1272,32 +1624,22 @@ def main() -> None:
         f"{SCREEN_CONVERGENCE_SUBHARMONIC_LEVEL}"
     )
 
+    print(
+        "Semillas: independientes por "
+        "(régimen, Ns, realización, pantalla)"
+    )
+
     for (
         regime_name,
+        regime_code,
         total_r0,
     ) in configurations:
 
-        # ----------------------------------------------------
-        # Run a new ensemble or extend an existing one
-        # ----------------------------------------------------
-
-        if arguments.extend_to is not None:
-
-            result = extend_regime(
-                regime_name=regime_name,
-                total_r0=total_r0,
-                target_size=(
-                    arguments.extend_to
-                ),
-                number_of_workers=(
-                    arguments.workers
-                ),
-            )
-
-        else:
+        if arguments.extend_to is None:
 
             result = run_regime(
                 regime_name=regime_name,
+                regime_code=regime_code,
                 total_r0=total_r0,
                 number_of_realizations=(
                     arguments.realizations
@@ -1307,40 +1649,19 @@ def main() -> None:
                 ),
             )
 
-        # ----------------------------------------------------
-        # Consecutive-refinement bootstrap statistics
-        # ----------------------------------------------------
+        else:
 
-        (
-            difference,
-            difference_lower,
-            difference_upper,
-            difference_contains_zero,
-        ) = calculate_refinement_difference_statistics(
-            result
-        )
-
-        result["refinement_difference"] = (
-            difference
-        )
-
-        result["refinement_difference_lower"] = (
-            difference_lower
-        )
-
-        result["refinement_difference_upper"] = (
-            difference_upper
-        )
-
-        result[
-            "refinement_difference_contains_zero"
-        ] = (
-            difference_contains_zero
-        )
-
-        # ----------------------------------------------------
-        # Save results
-        # ----------------------------------------------------
+            result = extend_regime(
+                regime_name=regime_name,
+                regime_code=regime_code,
+                total_r0=total_r0,
+                target_size=(
+                    arguments.extend_to
+                ),
+                number_of_workers=(
+                    arguments.workers
+                ),
+            )
 
         save_raw_samples(
             result
@@ -1350,21 +1671,9 @@ def main() -> None:
             result
         )
 
-        # ----------------------------------------------------
-        # Terminal output
-        # ----------------------------------------------------
-
         print_summary(
             result
         )
-
-        print_refinement_difference_summary(
-            result
-        )
-
-        # ----------------------------------------------------
-        # Figures
-        # ----------------------------------------------------
 
         plot_scintillation_convergence(
             result
@@ -1372,522 +1681,18 @@ def main() -> None:
 
         plot_convergence_metrics(
             result
-        )   
-
-def extend_regime(
-    regime_name: str,
-    total_r0: float,
-    target_size: int,
-    number_of_workers: int,
-) -> dict:
-    """
-    Extend all saved Ns ensembles for one turbulence regime
-    without recomputing existing realizations.
-    """
-
-    screen_numbers = tuple(
-        SCREEN_CONVERGENCE_LEVELS
-    )
-
-    # --------------------------------------------------------
-    # Determine current ensemble size
-    # --------------------------------------------------------
-
-    existing_samples = {}
-
-    current_sizes = []
-
-    for number_of_screens in screen_numbers:
-
-        samples = load_raw_samples(
-            regime_name=regime_name,
-            number_of_screens=number_of_screens,
         )
-
-        existing_samples[
-            number_of_screens
-        ] = samples
-
-        current_sizes.append(
-            samples.size
-        )
-
-    if len(set(current_sizes)) != 1:
-        raise RuntimeError(
-            "Saved Ns ensembles do not all have the same size."
-        )
-
-    current_size = (
-        current_sizes[0]
-    )
-
-    if target_size <= current_size:
-        raise ValueError(
-            f"target_size={target_size} must be greater than "
-            f"the existing size {current_size}."
-        )
-
-    additional_number = (
-        target_size
-        - current_size
-    )
-
-    print()
-    print(
-        f"Extensión del régimen: {regime_name}"
-    )
-    print(
-        "=" * (
-            len(regime_name) + 22
-        )
-    )
-    print(
-        f"Ensamble existente: {current_size}"
-    )
-    print(
-        f"Nuevas realizaciones: {additional_number}"
-    )
-    print(
-        f"Ensamble final: {target_size}"
-    )
-
-    # --------------------------------------------------------
-    # Deterministic complete seed sequence
-    # --------------------------------------------------------
-
-    all_realization_seeds = (
-        generate_realization_seeds(
-            target_size
-        )
-    )
-
-    new_realization_seeds = (
-        all_realization_seeds[
-            current_size:
-            target_size
-        ]
-    )
-
-    # --------------------------------------------------------
-    # Extend every Ns
-    # --------------------------------------------------------
-
-    raw_samples = {}
-
-    for number_of_screens in screen_numbers:
-
-        new_samples = (
-            run_ensemble_for_screen_number(
-                number_of_screens=(
-                    number_of_screens
-                ),
-                total_r0=total_r0,
-                realization_seeds=(
-                    new_realization_seeds
-                ),
-                number_of_workers=(
-                    number_of_workers
-                ),
-            )
-        )
-
-        combined = np.concatenate(
-            (
-                existing_samples[
-                    number_of_screens
-                ],
-                new_samples,
-            )
-        )
-
-        raw_samples[
-            number_of_screens
-        ] = combined
-
-    # --------------------------------------------------------
-    # Recompute statistics using the full extended ensemble
-    # --------------------------------------------------------
-
-    scintillation_values = np.zeros(
-        len(screen_numbers),
-        dtype=np.float64,
-    )
-
-    ci_lower = np.zeros_like(
-        scintillation_values
-    )
-
-    ci_upper = np.zeros_like(
-        scintillation_values
-    )
-
-    for index, number_of_screens in enumerate(
-        screen_numbers
-    ):
-
-        samples = raw_samples[
-            number_of_screens
-        ]
-
-        scintillation_values[index] = (
-            calculate_scintillation_index(
-                samples
-            )
-        )
-
-        (
-            ci_lower[index],
-            ci_upper[index],
-        ) = calculate_bootstrap_ci(
-            intensity_samples=samples,
-            number_of_bootstrap_samples=(
-                SCREEN_CONVERGENCE_BOOTSTRAP_SAMPLES
-            ),
-            confidence_level=(
-                SCREEN_CONVERGENCE_BOOTSTRAP_CONFIDENCE_LEVEL
-            ),
-            seed=(
-                SCREEN_CONVERGENCE_BOOTSTRAP_SEED
-                + number_of_screens
-            ),
-        )
-
-    (
-        reference_error,
-        incremental_change,
-    ) = calculate_convergence_metrics(
-        screen_numbers=screen_numbers,
-        scintillation_values=(
-            scintillation_values
-        ),
-    )
-
-    return {
-        "regime":
-            regime_name,
-        "total_r0":
-            total_r0,
-        "screen_numbers":
-            screen_numbers,
-        "scintillation":
-            scintillation_values,
-        "ci_lower":
-            ci_lower,
-        "ci_upper":
-            ci_upper,
-        "reference_error":
-            reference_error,
-        "incremental_change":
-            incremental_change,
-        "raw_samples":
-            raw_samples,
-    }
-
-
-def calculate_paired_bootstrap_difference_ci(
-    previous_samples: np.ndarray,
-    current_samples: np.ndarray,
-    number_of_bootstrap_samples: int,
-    confidence_level: float,
-    seed: int,
-) -> tuple[
-    float,
-    float,
-    float,
-]:
-    """
-    Estimate the difference in scintillation between two
-    consecutive longitudinal refinements:
-
-        D_Ns =
-            sigma_I^2(Ns)
-            - sigma_I^2(Ns/2)
-
-    together with a paired percentile-bootstrap confidence
-    interval.
-
-    The same realization indices are resampled in both
-    ensembles, preserving the common-random-number pairing.
-    """
-
-    if (
-        previous_samples.shape
-        != current_samples.shape
-    ):
-        raise ValueError(
-            "Paired ensembles must have identical shapes."
-        )
-
-    number_of_realizations = (
-        current_samples.size
-    )
-
-    previous_scintillation = (
-        calculate_scintillation_index(
-            previous_samples
-        )
-    )
-
-    current_scintillation = (
-        calculate_scintillation_index(
-            current_samples
-        )
-    )
-
-    observed_difference = (
-        current_scintillation
-        - previous_scintillation
-    )
-
-    rng = np.random.default_rng(
-        seed
-    )
-
-    bootstrap_differences = np.empty(
-        number_of_bootstrap_samples,
-        dtype=np.float64,
-    )
-
-    for bootstrap_index in range(
-        number_of_bootstrap_samples
-    ):
-
-        indices = rng.integers(
-            low=0,
-            high=number_of_realizations,
-            size=number_of_realizations,
-        )
-
-        previous_bootstrap = (
-            previous_samples[
-                indices
-            ]
-        )
-
-        current_bootstrap = (
-            current_samples[
-                indices
-            ]
-        )
-
-        bootstrap_differences[
-            bootstrap_index
-        ] = (
-            calculate_scintillation_index(
-                current_bootstrap
-            )
-            - calculate_scintillation_index(
-                previous_bootstrap
-            )
-        )
-
-    alpha = (
-        1.0
-        - confidence_level
-    )
-
-    lower = float(
-        np.quantile(
-            bootstrap_differences,
-            alpha / 2.0,
-        )
-    )
-
-    upper = float(
-        np.quantile(
-            bootstrap_differences,
-            1.0 - alpha / 2.0,
-        )
-    )
-
-    return (
-        float(observed_difference),
-        lower,
-        upper,
-    )
-
-
-def calculate_refinement_difference_statistics(
-    result: dict,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
-    """
-    Calculate paired-bootstrap statistics for consecutive
-    longitudinal refinements.
-    """
-
-    screen_numbers = (
-        result["screen_numbers"]
-    )
-
-    number_of_levels = (
-        len(screen_numbers)
-    )
-
-    differences = np.full(
-        number_of_levels,
-        np.nan,
-        dtype=np.float64,
-    )
-
-    lower = np.full_like(
-        differences,
-        np.nan,
-    )
-
-    upper = np.full_like(
-        differences,
-        np.nan,
-    )
-
-    contains_zero = np.zeros(
-        number_of_levels,
-        dtype=bool,
-    )
-
-    for index in range(
-        1,
-        number_of_levels,
-    ):
-
-        previous_ns = (
-            screen_numbers[
-                index - 1
-            ]
-        )
-
-        current_ns = (
-            screen_numbers[
-                index
-            ]
-        )
-
-        (
-            differences[index],
-            lower[index],
-            upper[index],
-        ) = calculate_paired_bootstrap_difference_ci(
-            previous_samples=(
-                result["raw_samples"][
-                    previous_ns
-                ]
-            ),
-            current_samples=(
-                result["raw_samples"][
-                    current_ns
-                ]
-            ),
-            number_of_bootstrap_samples=(
-                SCREEN_CONVERGENCE_BOOTSTRAP_SAMPLES
-            ),
-            confidence_level=(
-                SCREEN_CONVERGENCE_BOOTSTRAP_CONFIDENCE_LEVEL
-            ),
-            seed=(
-                SCREEN_CONVERGENCE_BOOTSTRAP_SEED
-                + 10_000
-                + current_ns
-            ),
-        )
-
-        contains_zero[index] = (
-            lower[index] <= 0.0
-            <= upper[index]
-        )
-
-    return (
-        differences,
-        lower,
-        upper,
-        contains_zero,
-    )
-
-def print_refinement_difference_summary(
-    result: dict,
-) -> None:
-    """
-    Print paired-bootstrap differences between consecutive
-    longitudinal refinements.
-
-    For each transition Ns/2 -> Ns, the reported quantity is
-
-        D_Ns = sigma_I^2(Ns) - sigma_I^2(Ns/2).
-
-    The confidence interval is obtained by paired bootstrap
-    resampling of the common realization indices.
-    """
 
     print()
 
     print(
-        "Diferencia entre refinamientos consecutivos"
+        "Resultados guardados en:"
     )
 
     print(
-        "==========================================="
+        OUTPUT_DIRECTORY.resolve()
     )
 
-    header = (
-        f"{'Refinamiento':>16}"
-        f"{'D_Ns':>14}"
-        f"{'IC95 inf':>14}"
-        f"{'IC95 sup':>14}"
-        f"{'Incluye 0':>12}"
-    )
-
-    print(
-        header
-    )
-
-    print(
-        "-" * len(header)
-    )
-
-    screen_numbers = (
-        result["screen_numbers"]
-    )
-
-    for index in range(
-        1,
-        len(screen_numbers),
-    ):
-
-        previous_ns = (
-            screen_numbers[
-                index - 1
-            ]
-        )
-
-        current_ns = (
-            screen_numbers[
-                index
-            ]
-        )
-
-        contains_zero = (
-            result[
-                "refinement_difference_contains_zero"
-            ][index]
-        )
-
-        zero_text = (
-            "sí"
-            if contains_zero
-            else "no"
-        )
-
-        print(
-            f"{previous_ns:>6d}"
-            f" -> {current_ns:<6d}"
-            f"{result['refinement_difference'][index]:14.6e}"
-            f"{result['refinement_difference_lower'][index]:14.6e}"
-            f"{result['refinement_difference_upper'][index]:14.6e}"
-            f"{zero_text:>12}"
-        )
 
 if __name__ == "__main__":
     main()

@@ -1131,3 +1131,823 @@ def modified_von_karman_subharmonics(
         rng=rng,
         remove_piston=remove_piston,
     )
+
+# ============================================================
+# Randomized low-frequency spectral compensation
+# ============================================================
+
+def generate_randomized_low_frequency_component(
+    n: int,
+    delta: float,
+    psd_function,
+    psd_kwargs: dict,
+    rng: np.random.Generator,
+    number_of_bands: int = 6,
+    modes_per_band: int = 8,
+    radial_ratio: float = 3.0,
+    remove_piston: bool = False,
+) -> RealArray:
+    """
+    Generate a randomized low-spatial-frequency phase component.
+
+    The spectral region below the fundamental FFT sampling scale
+    is divided into logarithmically spaced annular bands. Within
+    every band, wave vectors are sampled randomly and uniformly
+    in spectral area.
+
+    This provides a denser statistical representation of the
+    low-frequency spectrum than the conventional fixed 3x3
+    subharmonic grid while keeping the number of modes modest.
+
+    Parameters
+    ----------
+    n:
+        Number of samples along each spatial dimension.
+
+    delta:
+        Spatial sampling interval [m].
+
+    psd_function:
+        Function used to evaluate the phase PSD.
+
+    psd_kwargs:
+        Keyword arguments passed to ``psd_function``.
+
+    rng:
+        NumPy random-number generator.
+
+    number_of_bands:
+        Number of logarithmic low-frequency annular bands.
+
+    modes_per_band:
+        Number of independent conjugate spectral pairs sampled
+        within each band.
+
+    radial_ratio:
+        Ratio between the upper and lower radial frequency of
+        consecutive bands.
+
+        A value of 3 reproduces the scale separation used by
+        the conventional subharmonic method.
+
+    remove_piston:
+        If True, subtract the mean phase of the resulting
+        low-frequency component.
+
+    Returns
+    -------
+    RealArray
+        Randomized low-frequency phase contribution [rad].
+
+    Notes
+    -----
+    The fundamental FFT angular-frequency spacing is
+
+        Delta kappa = 2*pi / (N*delta).
+
+    The upper boundary of the randomized low-frequency region
+    is chosen as
+
+        kappa_max = Delta kappa / 2,
+
+    in order to represent the spectral region associated with
+    the missing zero-frequency FFT cell while avoiding strong
+    overlap with the first resolved FFT modes.
+
+    The minimum represented frequency is
+
+        kappa_min =
+            kappa_max / radial_ratio**number_of_bands.
+
+    For each sampled wave-vector pair +/-k, the real-valued
+    contribution is reconstructed as
+
+        2 Re[
+            a exp(i k.r)
+        ],
+
+    with
+
+        E[|a|^2]
+        =
+        Phi(k) Delta A_pair / 2.
+
+    This normalization gives the expected contribution
+
+        Phi(k) Delta A_pair
+
+    to the phase variance from each conjugate spectral pair.
+    """
+
+    if n <= 1:
+        raise ValueError(
+            "n must be greater than one."
+        )
+
+    if delta <= 0.0:
+        raise ValueError(
+            "delta must be positive."
+        )
+
+    if number_of_bands <= 0:
+        raise ValueError(
+            "number_of_bands must be positive."
+        )
+
+    if modes_per_band <= 0:
+        raise ValueError(
+            "modes_per_band must be positive."
+        )
+
+    if radial_ratio <= 1.0:
+        raise ValueError(
+            "radial_ratio must be greater than one."
+        )
+
+    # --------------------------------------------------------
+    # Spatial grid
+    # --------------------------------------------------------
+
+    window_size = (
+        n * delta
+    )
+
+    coordinates = (
+        np.arange(n)
+        * delta
+    )
+
+    x, y = np.meshgrid(
+        coordinates,
+        coordinates,
+        indexing="xy",
+    )
+
+    # --------------------------------------------------------
+    # Low-frequency spectral domain
+    # --------------------------------------------------------
+
+    fundamental_dk = (
+        2.0
+        * np.pi
+        / window_size
+    )
+
+    kappa_max = (
+        fundamental_dk
+        / 2.0
+    )
+
+    kappa_min = (
+        kappa_max
+        / radial_ratio**number_of_bands
+    )
+
+    # Logarithmically spaced radial boundaries.
+    #
+    # Example for ratio=3:
+    #
+    # kmax/3^6, ..., kmax/3, kmax
+    #
+
+    band_edges = np.geomspace(
+        kappa_min,
+        kappa_max,
+        number_of_bands + 1,
+    )
+
+    phase_low_frequency = np.zeros(
+        (n, n),
+        dtype=np.float64,
+    )
+
+    # --------------------------------------------------------
+    # Stratified Monte Carlo spectral synthesis
+    # --------------------------------------------------------
+
+    for band_index in range(
+        number_of_bands
+    ):
+
+        kappa_lower = (
+            band_edges[
+                band_index
+            ]
+        )
+
+        kappa_upper = (
+            band_edges[
+                band_index + 1
+            ]
+        )
+
+        # Full area of the annulus.
+        annulus_area = (
+            np.pi
+            * (
+                kappa_upper**2
+                - kappa_lower**2
+            )
+        )
+
+        # Every sampled conjugate pair represents an equal
+        # fraction of the complete annular area.
+        pair_area = (
+            annulus_area
+            / modes_per_band
+        )
+
+        for _ in range(
+            modes_per_band
+        ):
+
+            # ------------------------------------------------
+            # Uniform sampling in two-dimensional spectral area
+            # ------------------------------------------------
+            #
+            # Uniform radius itself would oversample the inner
+            # part of the annulus. Uniform area requires
+            #
+            # kappa^2 ~ Uniform(kappa_lower^2,
+            #                   kappa_upper^2).
+            #
+
+            radial_uniform = (
+                rng.random()
+            )
+
+            kappa = np.sqrt(
+                kappa_lower**2
+                + radial_uniform
+                * (
+                    kappa_upper**2
+                    - kappa_lower**2
+                )
+            )
+
+            # Only one half-plane is sampled explicitly.
+            # The conjugate partner -k is reconstructed through
+            # the real-valued 2*Re(...) expression.
+            angle = (
+                np.pi
+                * rng.random()
+            )
+
+            kx = (
+                kappa
+                * np.cos(
+                    angle
+                )
+            )
+
+            ky = (
+                kappa
+                * np.sin(
+                    angle
+                )
+            )
+
+            # ------------------------------------------------
+            # PSD
+            # ------------------------------------------------
+
+            psd_value = psd_function(
+                np.asarray(
+                    kappa
+                ),
+                **psd_kwargs,
+            )
+
+            psd_value = float(
+                psd_value
+            )
+
+            if (
+                not np.isfinite(
+                    psd_value
+                )
+                or psd_value < 0.0
+            ):
+                raise ValueError(
+                    "Invalid PSD value in randomized "
+                    "low-frequency synthesis."
+                )
+
+            # ------------------------------------------------
+            # Complex Gaussian coefficient
+            # ------------------------------------------------
+
+            gaussian_coefficient = (
+                rng.normal()
+                + 1j
+                * rng.normal()
+            ) / np.sqrt(
+                2.0
+            )
+
+            # Because pair_area represents both +k and -k,
+            # the coefficient associated with one member of
+            # the conjugate pair receives half of this area.
+            amplitude = (
+                gaussian_coefficient
+                * np.sqrt(
+                    psd_value
+                    * pair_area
+                    / 2.0
+                )
+            )
+
+            phase_argument = (
+                kx * x
+                + ky * y
+            )
+
+            phase_low_frequency += (
+                2.0
+                * np.real(
+                    amplitude
+                    * np.exp(
+                        1j
+                        * phase_argument
+                    )
+                )
+            )
+
+    if remove_piston:
+        phase_low_frequency -= np.mean(
+            phase_low_frequency
+        )
+
+    return phase_low_frequency
+
+
+# ============================================================
+# Kolmogorov randomized low-frequency component
+# ============================================================
+
+def kolmogorov_randomized_low_frequency_component(
+    n: int,
+    delta: float,
+    r0: float,
+    rng: np.random.Generator,
+    number_of_bands: int = 6,
+    modes_per_band: int = 8,
+    radial_ratio: float = 3.0,
+    remove_piston: bool = False,
+) -> RealArray:
+    """
+    Generate randomized low-frequency compensation for a
+    Kolmogorov phase spectrum.
+    """
+
+    return generate_randomized_low_frequency_component(
+        n=n,
+        delta=delta,
+        psd_function=kolmogorov_psd,
+        psd_kwargs={
+            "r0": r0,
+        },
+        rng=rng,
+        number_of_bands=(
+            number_of_bands
+        ),
+        modes_per_band=(
+            modes_per_band
+        ),
+        radial_ratio=(
+            radial_ratio
+        ),
+        remove_piston=(
+            remove_piston
+        ),
+    )
+
+
+# ============================================================
+# Kolmogorov phase screen with randomized LF compensation
+# ============================================================
+
+def kolmogorov_phase_screen_with_randomized_low_frequencies(
+    n: int,
+    delta: float,
+    r0: float,
+    rng: np.random.Generator,
+    number_of_bands: int = 6,
+    modes_per_band: int = 8,
+    radial_ratio: float = 3.0,
+    remove_piston: bool = True,
+) -> RealArray:
+    """
+    Generate a Kolmogorov phase screen using the standard FFT
+    high-frequency component plus randomized low-frequency
+    spectral compensation.
+
+    The existing conventional subharmonic implementation is not
+    modified by this function.
+    """
+
+    if r0 <= 0.0:
+        raise ValueError(
+            "r0 must be positive."
+        )
+
+    # --------------------------------------------------------
+    # Standard FFT component
+    # --------------------------------------------------------
+
+    phase_fft = kolmogorov_phase_screen(
+        n=n,
+        delta=delta,
+        r0=r0,
+        rng=rng,
+        remove_piston=False,
+    )
+
+    # --------------------------------------------------------
+    # Randomized low-frequency correction
+    # --------------------------------------------------------
+
+    phase_low_frequency = (
+        kolmogorov_randomized_low_frequency_component(
+            n=n,
+            delta=delta,
+            r0=r0,
+            rng=rng,
+            number_of_bands=(
+                number_of_bands
+            ),
+            modes_per_band=(
+                modes_per_band
+            ),
+            radial_ratio=(
+                radial_ratio
+            ),
+            remove_piston=False,
+        )
+    )
+
+    phase = (
+        phase_fft
+        + phase_low_frequency
+    )
+
+    if remove_piston:
+        phase -= np.mean(
+            phase
+        )
+
+    return phase
+
+# ============================================================
+# Stratified low-frequency spectral compensation
+# ============================================================
+
+def generate_stratified_low_frequency_component(
+    n: int,
+    delta: float,
+    psd_function,
+    psd_kwargs: dict,
+    rng: np.random.Generator,
+    number_of_bands: int = 6,
+    modes_per_band: int = 8,
+    radial_ratio: float = 3.0,
+    remove_piston: bool = False,
+) -> RealArray:
+    """
+    Generate a low-frequency phase component using randomized
+    radial sampling and angularly stratified directions.
+
+    The low-frequency spectral region below the fundamental FFT
+    scale is divided into logarithmic annular bands.
+
+    Within each band:
+        - radial frequencies are sampled randomly in spectral area;
+        - angular directions are evenly distributed;
+        - the complete angular pattern receives a random rotation.
+
+    This preserves stochastic sampling while reducing accidental
+    directional anisotropy.
+    """
+
+    if n <= 1:
+        raise ValueError(
+            "n must be greater than one."
+        )
+
+    if delta <= 0.0:
+        raise ValueError(
+            "delta must be positive."
+        )
+
+    if number_of_bands <= 0:
+        raise ValueError(
+            "number_of_bands must be positive."
+        )
+
+    if modes_per_band <= 0:
+        raise ValueError(
+            "modes_per_band must be positive."
+        )
+
+    if radial_ratio <= 1.0:
+        raise ValueError(
+            "radial_ratio must be greater than one."
+        )
+
+    window_size = (
+        n * delta
+    )
+
+    fundamental_dk = (
+        2.0
+        * np.pi
+        / window_size
+    )
+
+    kappa_max = (
+        fundamental_dk
+        / 2.0
+    )
+
+    kappa_min = (
+        kappa_max
+        / radial_ratio**number_of_bands
+    )
+
+    band_edges = np.geomspace(
+        kappa_min,
+        kappa_max,
+        number_of_bands + 1,
+    )
+
+    coordinates = (
+        np.arange(n)
+        * delta
+    )
+
+    x, y = np.meshgrid(
+        coordinates,
+        coordinates,
+        indexing="xy",
+    )
+
+    phase_low_frequency = np.zeros(
+        (n, n),
+        dtype=np.float64,
+    )
+
+    for band_index in range(
+        number_of_bands
+    ):
+
+        kappa_lower = (
+            band_edges[
+                band_index
+            ]
+        )
+
+        kappa_upper = (
+            band_edges[
+                band_index + 1
+            ]
+        )
+
+        annulus_area = (
+            np.pi
+            * (
+                kappa_upper**2
+                - kappa_lower**2
+            )
+        )
+
+        pair_area = (
+            annulus_area
+            / modes_per_band
+        )
+
+        # Random global angular rotation for this band.
+        angular_offset = (
+            np.pi
+            * rng.random()
+            / modes_per_band
+        )
+
+        for mode_index in range(
+            modes_per_band
+        ):
+
+            # ------------------------------------------------
+            # Randomized radial sampling, uniform in area
+            # ------------------------------------------------
+
+            radial_uniform = (
+                rng.random()
+            )
+
+            kappa = np.sqrt(
+                kappa_lower**2
+                + radial_uniform
+                * (
+                    kappa_upper**2
+                    - kappa_lower**2
+                )
+            )
+
+            # ------------------------------------------------
+            # Angular stratification
+            # ------------------------------------------------
+            #
+            # Only a half-plane is explicitly sampled because
+            # the conjugate partner is reconstructed through
+            # 2*Re(...).
+            #
+
+            angle = (
+                angular_offset
+                + mode_index
+                * np.pi
+                / modes_per_band
+            )
+
+            kx = (
+                kappa
+                * np.cos(
+                    angle
+                )
+            )
+
+            ky = (
+                kappa
+                * np.sin(
+                    angle
+                )
+            )
+
+            psd_value = psd_function(
+                np.asarray(
+                    kappa
+                ),
+                **psd_kwargs,
+            )
+
+            psd_value = float(
+                psd_value
+            )
+
+            if (
+                not np.isfinite(
+                    psd_value
+                )
+                or psd_value < 0.0
+            ):
+                raise ValueError(
+                    "Invalid PSD value in stratified "
+                    "low-frequency synthesis."
+                )
+
+            gaussian_coefficient = (
+                rng.normal()
+                + 1j
+                * rng.normal()
+            ) / np.sqrt(
+                2.0
+            )
+
+            amplitude = (
+                gaussian_coefficient
+                * np.sqrt(
+                    psd_value
+                    * pair_area
+                    / 2.0
+                )
+            )
+
+            phase_argument = (
+                kx * x
+                + ky * y
+            )
+
+            phase_low_frequency += (
+                2.0
+                * np.real(
+                    amplitude
+                    * np.exp(
+                        1j
+                        * phase_argument
+                    )
+                )
+            )
+
+    if remove_piston:
+        phase_low_frequency -= np.mean(
+            phase_low_frequency
+        )
+
+    return phase_low_frequency
+
+
+# ============================================================
+# Kolmogorov stratified low-frequency component
+# ============================================================
+
+def kolmogorov_stratified_low_frequency_component(
+    n: int,
+    delta: float,
+    r0: float,
+    rng: np.random.Generator,
+    number_of_bands: int = 6,
+    modes_per_band: int = 8,
+    radial_ratio: float = 3.0,
+    remove_piston: bool = False,
+) -> RealArray:
+    """
+    Generate stratified low-frequency compensation for a
+    Kolmogorov phase spectrum.
+    """
+
+    return generate_stratified_low_frequency_component(
+        n=n,
+        delta=delta,
+        psd_function=kolmogorov_psd,
+        psd_kwargs={
+            "r0": r0,
+        },
+        rng=rng,
+        number_of_bands=(
+            number_of_bands
+        ),
+        modes_per_band=(
+            modes_per_band
+        ),
+        radial_ratio=(
+            radial_ratio
+        ),
+        remove_piston=(
+            remove_piston
+        ),
+    )
+
+
+# ============================================================
+# Kolmogorov phase screen with stratified LF compensation
+# ============================================================
+
+def kolmogorov_phase_screen_with_stratified_low_frequencies(
+    n: int,
+    delta: float,
+    r0: float,
+    rng: np.random.Generator,
+    number_of_bands: int = 6,
+    modes_per_band: int = 8,
+    radial_ratio: float = 3.0,
+    remove_piston: bool = True,
+) -> RealArray:
+    """
+    Generate a Kolmogorov phase screen consisting of the
+    standard FFT component plus angularly stratified randomized
+    low-frequency compensation.
+    """
+
+    if r0 <= 0.0:
+        raise ValueError(
+            "r0 must be positive."
+        )
+
+    phase_fft = kolmogorov_phase_screen(
+        n=n,
+        delta=delta,
+        r0=r0,
+        rng=rng,
+        remove_piston=False,
+    )
+
+    phase_low_frequency = (
+        kolmogorov_stratified_low_frequency_component(
+            n=n,
+            delta=delta,
+            r0=r0,
+            rng=rng,
+            number_of_bands=(
+                number_of_bands
+            ),
+            modes_per_band=(
+                modes_per_band
+            ),
+            radial_ratio=(
+                radial_ratio
+            ),
+            remove_piston=False,
+        )
+    )
+
+    phase = (
+        phase_fft
+        + phase_low_frequency
+    )
+
+    if remove_piston:
+        phase -= np.mean(
+            phase
+        )
+
+    return phase

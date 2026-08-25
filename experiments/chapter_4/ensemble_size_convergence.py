@@ -1163,27 +1163,12 @@ def analyze_saved_ensemble() -> None:
         f"{total_realizations}"
     )
 
-    base_checkpoints = (
-        25,
-        50,
-        100,
-        150,
-        200,
-        300,
-        400,
-        500,
-        750,
-        1000,
-        1250,
-        1500,
-    )
-
     checkpoints = tuple(
         checkpoint
-        for checkpoint in base_checkpoints
+        for checkpoint in ENSEMBLE_CHECKPOINTS
         if checkpoint < total_realizations
     )
-
+    
     checkpoints = (
         *checkpoints,
         total_realizations,
@@ -1338,7 +1323,9 @@ if __name__ == "__main__":
             retention.size
         )
 
-        base_checkpoints = (
+        ENSEMBLE_REFERENCE_SIZE = 2000
+        
+        ENSEMBLE_CHECKPOINTS = (
             25,
             50,
             100,
@@ -1351,6 +1338,8 @@ if __name__ == "__main__":
             1000,
             1250,
             1500,
+            1750,
+            2000,
         )
 
         checkpoints = tuple(

@@ -96,7 +96,7 @@ STRONG_R0_SCREEN = segment_fried_parameter(
 # Ensemble-convergence test
 # ============================================================
 
-ENSEMBLE_REFERENCE_SIZE = 1000
+ENSEMBLE_REFERENCE_SIZE = 2000
 
 ENSEMBLE_CHECKPOINTS = (
     25,
@@ -109,6 +109,10 @@ ENSEMBLE_CHECKPOINTS = (
     500,
     750,
     1000,
+    1250,
+    1500,
+    1750,
+    2000,
 )
 
 ENSEMBLE_SEED = 20260816
@@ -139,8 +143,8 @@ ENSEMBLE_SUBHARMONIC_LEVEL = (
 # OAM analysis
 # ============================================================
 
-OAM_ELL_MIN = -30
-OAM_ELL_MAX = 30
+OAM_ELL_MIN = -240
+OAM_ELL_MAX = 240
 
 # ============================================================
 # Weak-turbulence Rytov validation
@@ -148,7 +152,7 @@ OAM_ELL_MAX = 30
 
 WEAK_CN2 = 1.0e-15  # [m^(-2/3)]
 
-RYTOV_NUMBER_OF_REALIZATIONS = 1000
+RYTOV_NUMBER_OF_REALIZATIONS = 1750
 
 RYTOV_R0_SCREEN = WEAK_R0_SCREEN
 
@@ -193,3 +197,21 @@ SCREEN_CONVERGENCE_BOOTSTRAP_SAMPLES = 10_000
 SCREEN_CONVERGENCE_BOOTSTRAP_CONFIDENCE_LEVEL = 0.95
 
 SCREEN_CONVERGENCE_BOOTSTRAP_SEED = 20260821
+
+# ============================================================
+# Weak-turbulence beam-wander validation
+# ============================================================
+
+BEAM_WANDER_NUMBER_OF_REALIZATIONS = 1750
+
+BEAM_WANDER_R0_SCREEN = WEAK_R0_SCREEN
+
+BEAM_WANDER_SUBHARMONIC_LEVEL = (
+    KOLMOGOROV_SUBHARMONIC_LEVEL
+)
+
+BEAM_WANDER_BOOTSTRAP_SAMPLES = 10_000
+
+BEAM_WANDER_BOOTSTRAP_CONFIDENCE_LEVEL = 0.95
+
+BEAM_WANDER_BOOTSTRAP_SEED = 20260824
