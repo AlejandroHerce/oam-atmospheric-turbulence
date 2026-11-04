@@ -6,7 +6,6 @@ Grupo de Óptica y Tratamiento de Señales (GOTS), Universidad Industrial de San
 Optica Latin America Optics and Photonics Conference (LAOP 2026), Bogotá, Colombia · Joint Poster Session, 10 November 2026 · Paper ID [Tu5A.28]
 
 📄 **Poster (PDF):** [LAOP2026/LAOP2026_poster.pdf](LAOP2026/LAOP2026_poster.pdf)
-📘 **Undergraduate thesis:** []
 ✉️ **Contact:** alejandro2190739@correo.uis.edu.co
 
 ### Key results
