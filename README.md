@@ -268,13 +268,7 @@ This analysis reveals that turbulence-induced OAM redistribution is not necessar
 
 The ensemble entropy gap is defined as the difference between the entropy of the ensemble-averaged spectrum and the average entropy of individual atmospheric realizations,
 
-$$
-\Delta H_{\mathrm{ens}}
-=
-H\!\left(\langle P_j\rangle\right)
--
-\left\langle H(P_j)\right\rangle.
-$$
+$$ \Delta H_{\mathrm{ens}} = H\!\left(\langle P_j\rangle\right) - \left\langle H(P_j)\right\rangle. $$
 
 For equiprobable realizations, this quantity is related to the generalized Jensen–Shannon divergence of the ensemble of OAM spectra.
 
