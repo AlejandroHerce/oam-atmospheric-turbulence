@@ -3,17 +3,17 @@
 **Influence of Atmospheric Turbulence Power Spectral Density Models on Orbital Angular Momentum Mode Coupling**
 Alejandro Hernández, Yezid T. Moreno, Zayda Paola Reyes Quijano
 Grupo de Óptica y Tratamiento de Señales (GOTS), Universidad Industrial de Santander, Colombia
-Optica Latin America Optics and Photonics Conference (LAOP 2026), Bogotá, Colombia · Joint Poster Session Tu5A, 10 November 2026 · Paper ID [4579812]
+Optica Latin America Optics and Photonics Conference (LAOP 2026), Bogotá, Colombia · Joint Poster Session, 10 November 2026 · Paper ID [Tu5A.28]
 
 📄 **Poster (PDF):** [docs/LAOP2026_poster.pdf](docs/LAOP2026_poster.pdf)
-📘 **Undergraduate thesis:** [link to the thesis PDF or repository record]
+📘 **Undergraduate thesis:** []
 ✉️ **Contact:** alejandro2190739@correo.uis.edu.co
 
 ### Key results
 
 | Result | Value |
 | --- | --- |
-| Same C<sub>n</sub><sup>2</sup>, different PSD → change in OAM metrics | up to ~25 % |
+| Same $$C<sub>n</sub><sup>2</sup>$$, different PSD → change in OAM metrics | up to ~25 % |
 | Beam wander vs. Kolmogorov (von Kármán and modified von Kármán) | ≈ −15 % for both → set by the outer scale L₀ |
 | OAM spectral width vs. Kolmogorov | −22 % only with the inner scale l₀ (von Kármán alone: −3 %) |
 | Mode retention vs. Kolmogorov | +10 % (von Kármán), +13 % (modified von Kármán) |
@@ -83,6 +83,8 @@ Beams: `LG01`–`LG03`, `BG01`–`BG03` · PSD: `kolmogorov`, `von_karman`, `mod
 1. L. C. Andrews and R. L. Phillips, *Laser Beam Propagation through Random Media*, 2nd ed. (SPIE Press, 2005).
 2. C. Paterson, "Atmospheric turbulence and orbital angular momentum of single photons for optical communication," *Phys. Rev. Lett.* **94**, 153901 (2005).
 3. C. Peters, V. Cocotos, and A. Forbes, "Structured light in atmospheric turbulence—a guide to its digital implementation: tutorial," *Adv. Opt. Photon.* **17**, 113–184 (2025).
-4. N. A. Ferlic, M. van Iersel, and C. C. Davis, "Weak turbulence effects on different beams carrying orbital angular momentum," *J. Opt. Soc. Am. A* **38**, 1423–1437 (2021).
-5. [Klug et al. — copy the full citation from reference 76 of the thesis]
+4. Asher Klug, Isaac Nape, and Andrew Forbes. The orbital angular momentum of a turbulent
+atmosphere and its impact on propagating structured light fields. New Journal of Physics, 23
+(9):093012, 2021.
+5. N. A. Ferlic, M. van Iersel, and C. C. Davis, "Weak turbulence effects on different beams carrying orbital angular momentum," *J. Opt. Soc. Am. A* **38**, 1423–1437 (2021).
 6. K. Khare, P. Lochab, and P. Senthilkumaran, *Orbital Angular Momentum States of Light: Propagation through Atmospheric Turbulence* (IOP Publishing, 2020).
