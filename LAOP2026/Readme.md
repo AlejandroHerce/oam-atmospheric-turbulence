@@ -5,7 +5,7 @@ Alejandro Hernández, Yezid T. Moreno, Zayda Paola Reyes Quijano
 Grupo de Óptica y Tratamiento de Señales (GOTS), Universidad Industrial de Santander, Colombia
 Optica Latin America Optics and Photonics Conference (LAOP 2026), Bogotá, Colombia · Joint Poster Session, 10 November 2026 · Paper ID [Tu5A.28]
 
-📄 **Poster (PDF):** [docs/LAOP2026_poster.pdf](docs/LAOP2026_poster.pdf)
+📄 **Poster (PDF):** [LAOP2026/LAOP2026_poster.pdf](LAOP2026/LAOP2026_poster.pdf)
 📘 **Undergraduate thesis:** []
 ✉️ **Contact:** alejandro2190739@correo.uis.edu.co
 
@@ -51,7 +51,7 @@ Relative changes are means over 18 scenarios (6 beams × 3 regimes), 1750 realiz
 
 | Test | Reference | Agreement |
 | --- | --- | --- |
-| On-axis scintillation index | Rytov theory (Gaussian beam) | 4.3 % at 1 km |
+| On-axis scintillation index | Rytov theory (Gaussian beam) | 3.5 % at 1 km |
 | RMS beam wander | Analytic prediction | 0.4 % at 1 km |
 | OAM retention (LG₀¹) | Paterson model | 3.4 % |
 | Energy and OAM spectrum in vacuum | Exact conservation | machine precision |
