@@ -135,7 +135,7 @@ Together, these tests establish the validity and numerical robustness of the pro
 
 The final production study considers:
 
-- Laguerre–Gaussian beams with azimuthal orders \(|\ell| = 1, 2, 3\)
+- Laguerre–Gaussian beams with azimuthal orders \(|$$\ell|$$ = 1, 2, 3\)
 - Bessel–Gaussian beams with corresponding OAM orders
 - Kolmogorov turbulence
 - von Kármán turbulence
@@ -226,7 +226,7 @@ Within the parameter space investigated in this thesis:
 
 - LG and BG beams with comparable transverse evolution exhibit very similar OAM degradation, with no systematic advantage of one family over the other under the conditions studied.
 
-- Under moderate and strong turbulence, the ensemble-averaged OAM spectrum develops a systematic asymmetry. For the positive transmitted charges considered in the main simulations, the redistribution is preferentially oriented toward lower OAM indices. Charge-inversion control simulations support an interpretation in terms of preferential redistribution toward lower \(|\ell|\), rather than toward a fixed sign of the OAM axis.
+- Under moderate and strong turbulence, the ensemble-averaged OAM spectrum develops a systematic asymmetry. For the positive transmitted charges considered in the main simulations, the redistribution is preferentially oriented toward lower OAM indices. Charge-inversion control simulations support an interpretation in terms of preferential redistribution toward lower \($$|\ell|$$\), rather than toward a fixed sign of the OAM axis.
 
 - The ensemble entropy gap distinguishes modal diversity within individual atmospheric realizations from spectral variability between realizations. This quantity reaches its maximum in the moderate-turbulence regime for all configurations studied.
 
@@ -268,13 +268,13 @@ This analysis reveals that turbulence-induced OAM redistribution is not necessar
 
 The ensemble entropy gap is defined as the difference between the entropy of the ensemble-averaged spectrum and the average entropy of individual atmospheric realizations,
 
-
+$$
 \Delta H_{\mathrm{ens}}
 =
 H\!\left(\langle P_j\rangle\right)
 -
 \left\langle H(P_j)\right\rangle.
-
+$$
 
 For equiprobable realizations, this quantity is related to the generalized Jensen–Shannon divergence of the ensemble of OAM spectra.
 
@@ -342,7 +342,7 @@ Future extensions of the project may include:
 - joint radial and azimuthal modal decompositions;
 - temporally correlated atmospheric channels;
 - adaptive-optics and modal-tracking strategies;
-- realistic longitudinal \(C_n^2\) profiles;
+- realistic longitudinal \($$C_n^2$$\) profiles;
 - and end-to-end OAM communication-system simulations.
 
 ---
