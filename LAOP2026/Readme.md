@@ -52,7 +52,7 @@ The code was checked in four stages before running the production simulations: f
 
 #### 1. Free-space propagation (no turbulence)
 
-Test beams: Gaussian, $\mathrm{LG}_0^1–\mathrm{LG}_0^3$ and BG $\ell = 1$–$3$, propagated over 1 km in 16 steps of 62.5 m.
+Test beams: Gaussian, $\mathrm{LG}_0^1–\mathrm{LG}_0^3$ and BG $\ell = 1–3$, propagated over 1 km in 16 steps of 62.5 m.
 
 | Check | What was done | Result |
 | --- | --- | --- |
