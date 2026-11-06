@@ -1,6 +1,6 @@
 ## LAOP 2026 Poster
 
-**Influence of Atmospheric Turbulence Power Spectral Density Models on Orbital Angular Momentum Mode Coupling**
+**Influence of Atmospheric Turbulence Power Spectral Density Models on Orbital Angular Momentum Mode Coupling** ·
 Alejandro Hernández, Yezid T. Moreno, Zayda Paola Reyes Quijano ·
 Grupo de Óptica y Tratamiento de Señales (GOTS), Universidad Industrial de Santander, Colombia ·
 Optica Latin America Optics and Photonics Conference (LAOP 2026), Bogotá, Colombia · Joint Poster Session, 10 November 2026 · Paper ID [Tu5A.28]
